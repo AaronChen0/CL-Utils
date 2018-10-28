@@ -3,45 +3,39 @@
   (let ((sqrt (isqrt n)))
     (and (= (* sqrt sqrt) n) sqrt)))
 
-(defun factorial (n)
-  (loop with product = 1
-     for i from 2 to n
-     do (setf product (* product i))
-     finally (return product)))
+(defun factorial (n &aux (p 1))
+  (loop for i from 2 to n
+     do (setf p (* p i))
+     finally (return p)))
 
 (defun fib (n)
   (loop with (a b p q) = (list 1 0 0 1)
-     until (zerop n)
+     if (zerop n) return b
      if (oddp n) do (psetf a (+ (* b q) (* a (+ p q)))
                            b (+ (* b p) (* a q)))
      do (psetf p (+ (* p p) (* q q))
                q (* q (+ q (* 2 p)))
-               n (ash n -1))
-     finally (return b)))
+               n (ash n -1))))
 
-(defun exp-mod (b e m)
+(defun exp-mod (b e m &aux (p 1))
   (setf b (mod b m))
-  (loop with p = 1 until (zerop e)
+  (loop if (zerop e) return p
      if (oddp e) do (setf p (mod (* p b) m))
-     do (setf e (ash e -1) b (mod (* b b) m))
-     finally (return p)))
+     do (setf e (ash e -1) b (mod (* b b) m))))
 
-(defun c (n r)
+(defun c (n r &aux (prod 1))
   (setf r (min r (- n r)))
-  (loop with prod = 1
-     for n1 from n downto (- n r -1)
+  (loop for n1 from n downto (- n r -1)
      for r1 from r downto 1
      do (setf prod (* prod (/ n1 r1)))
      finally (return prod)))
 
-(defun parse (n)
-  (loop with result
-     initially (if (zerop n) (return (list 0)))
-     until (zerop n) do
-       (multiple-value-bind (quotient remainder) (floor n 10)
-         (push remainder result)
-         (setf n quotient))
-     finally (return result)))
+(defun parse (n &aux result)
+  (loop
+     (if (zerop n) (return (or result (list 0))))
+     (multiple-value-bind (quotient remainder) (floor n 10)
+       (push remainder result)
+       (setf n quotient))))
 
 (defun primep (n)
   (or (= n 2) (= n 3) (= n 5)
@@ -52,10 +46,9 @@
            (loop with k = 7
               with list = '#1=(4 2 4 2 4 6 2 6 . #1#)
               for i in list
-              until (> (* k k) n)
+              if (> (* k k) n) return t
               if (zerop (mod n k)) return nil
-              do (incf k i)
-              finally (return t)))))
+              do (incf k i)))))
 
 (defun factor (n)
   (mapcar #'car (factor2 n)))
@@ -63,27 +56,34 @@
 (defun factor2 (n)
   (declare (fixnum n))
   (append
-   (loop with limit of-type fixnum = (isqrt n)
+   (loop with limit fixnum = (isqrt n)
       for i fixnum in '(2 3 5)
       if (and (> i limit) (> n 1)) collect (cons n 1) and do (setf n 1)
       until (= n 1)
       if (zerop (mod n i))
       collect (cons i (loop for c fixnum from 1 do (setf n (/ n i))
-                         while (zerop (mod n i))
-                         finally (return c)))
+                         unless (zerop (mod n i)) return c))
       and do (setf limit (isqrt n)))
-   (loop with limit of-type fixnum = (isqrt n)
-      with i of-type fixnum = 7
+   (loop with limit fixnum = (isqrt n)
+      with i fixnum = 7
       with list = '#1=(4 2 4 2 4 6 2 6 . #1#)
-      for k of-type fixnum in list
+      for k fixnum in list
       if (and (> i limit) (> n 1)) collect (cons n 1) and do (setf n 1)
       until (= n 1)
       do (incf i k)
       if (zerop (mod n i))
       collect (cons i (loop for c fixnum from 1 do (setf n (/ n i))
-                         while (zerop (mod n i))
-                         finally (return c)))
+                         unless (zerop (mod n i)) return c))
       and do (setf limit (isqrt n)))))
+
+#+sbcl
+(defun factor3 (n)
+  (with-input-from-string
+      (in (with-output-to-string (out)
+            (sb-ext:run-program "/usr/bin/factor" (list (write-to-string n)) :output out)))
+    (loop (if (char= #\: (read-char in)) (return)))
+    (loop for n = (read in nil nil)
+       while n collect n)))
 
 (defun phi (n)
   (reduce '* (mapcar (lambda (i) (- 1 (/ i))) (factor n))
@@ -100,19 +100,18 @@
     (loop for i fixnum = 2 then (if (= i 2) 3 (+ i 2))
        if (and (> i limit) (> n 1))
        do (setf prod (* prod 2)) and do (setf n 1)
-       until (= n 1)
+       if (= n 1) return prod
        if (zerop (mod n i))
        do (loop for k fixnum from 1 do (setf n (/ n i))
              while (zerop (mod n i))
              finally (setf prod (* prod (1+ k))))
-         (setf limit (isqrt n))
-       finally (return prod))))
+         (setf limit (isqrt n)))))
 
 (defun sum-divisors (n)
   (loop with limit = (isqrt n)
      for i from 1 to limit
      for (q r) = (multiple-value-list (floor n i))
-     if (zerop r) sum (+ i r) into s
+     if (zerop r) sum (+ i q) into s
      finally (return (if (= (* limit limit) n) (- s limit) s))))
 
 (defun sieve-of-eratosthenes (maximum)
@@ -121,21 +120,19 @@
   (cond ((< maximum 2) nil)
         ((= maximum 2) (list 2))
         ((< maximum 5) (list 2 3))
-        (t (loop
+        (t (loop with candidate fixnum = 7
               with sieve = (make-array (1+ maximum)
                                        :element-type 'bit
                                        :initial-element 0)
               with list = '#1=(4 2 4 2 4 6 2 6 . #1#)
-              with candidate of-type fixnum = 7
               for k fixnum in list
-              until (> candidate maximum)
-              when (zerop (bit sieve candidate))
+              if (> candidate maximum) return (list* 2 3 5 values)
+              if (zerop (bit sieve candidate))
               collect candidate into values
               and do (loop for composite fixnum from (the fixnum (expt candidate 2))
                         to maximum by candidate
                         do (setf (bit sieve composite) 1))
-              do (incf candidate k)
-              finally (return (list* 2 3 5 values))))))
+              do (incf candidate k)))))
 
 (defun primes (limit)
   (declare (optimize (speed 3) (debug 0) (safety 0))
