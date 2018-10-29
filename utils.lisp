@@ -25,8 +25,8 @@
 
 (defun c (n r &aux (prod 1))
   (setf r (min r (- n r)))
-  (loop for n1 from n downto (- n r -1)
-     for r1 from r downto 1
+  (loop for n1 from (- n r -1) to n
+     for r1 from 1 to r
      do (setf prod (* prod (/ n1 r1)))
      finally (return prod)))
 
@@ -54,7 +54,8 @@
   (mapcar #'car (factor2 n)))
 
 (defun factor2 (n)
-  (declare (fixnum n))
+  (declare (optimize (speed 3) (safety 0) (debug 0))
+           (fixnum n))
   (append
    (loop with limit fixnum = (isqrt n)
       for i fixnum in '(2 3 5)
@@ -70,11 +71,11 @@
       for k fixnum in list
       if (and (> i limit) (> n 1)) collect (cons n 1) and do (setf n 1)
       until (= n 1)
-      do (incf i k)
       if (zerop (mod n i))
       collect (cons i (loop for c fixnum from 1 do (setf n (/ n i))
                          unless (zerop (mod n i)) return c))
-      and do (setf limit (isqrt n)))))
+      and do (setf limit (isqrt n))
+      do (incf i k))))
 
 #+sbcl
 (defun factor3 (n)
@@ -92,24 +93,21 @@
 (defun make-primes (maximum)
   (sieve-of-eratosthenes maximum))
 
-(defun count-d (n)
+(defun count-d (n &aux (prod 1) (limit (isqrt n)))
   (declare (optimize (speed 3) (debug 0) (safety 0))
-           (fixnum n))
-  (let ((prod 1) (limit (isqrt n)))
-    (declare (fixnum prod))
-    (loop for i fixnum = 2 then (if (= i 2) 3 (+ i 2))
-       if (and (> i limit) (> n 1))
-       do (setf prod (* prod 2)) and do (setf n 1)
-       if (= n 1) return prod
-       if (zerop (mod n i))
-       do (loop for k fixnum from 1 do (setf n (/ n i))
-             while (zerop (mod n i))
-             finally (setf prod (* prod (1+ k))))
-         (setf limit (isqrt n)))))
+           (fixnum n prod limit))
+  (loop for i fixnum = 2 then (if (= i 2) 3 (+ i 2))
+     if (and (> i limit) (> n 1))
+     do (setf prod (* prod 2)) and do (setf n 1)
+     if (= n 1) return prod
+     if (zerop (mod n i))
+     do (loop for k fixnum from 1 do (setf n (/ n i))
+           while (zerop (mod n i))
+           finally (setf prod (* prod (1+ k))))
+       (setf limit (isqrt n))))
 
-(defun sum-divisors (n)
-  (loop with limit = (isqrt n)
-     for i from 1 to limit
+(defun sum-divisors (n &aux (limit (isqrt n)))
+  (loop for i from 1 to limit
      for (q r) = (multiple-value-list (floor n i))
      if (zerop r) sum (+ i q) into s
      finally (return (if (= (* limit limit) n) (- s limit) s))))
